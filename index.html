@@ -1183,4 +1183,16 @@ function showToast(msg){
 window.addEventListener('scroll',()=>{
   document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 60);
 });
-document.getElementById('adminOverlay').addEv
+document.getElementById('adminOverlay').addEventListener('click',function(e){
+  if(e.target===this) closeAdmin();
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape') closeAdmin();
+});
+
+/* INIT */
+renderTreatments();
+renderAds();
+</script>
+</body>
+</html>
