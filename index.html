@@ -820,7 +820,7 @@ footer {
         <div class="admin-pane active" id="pane-bookings">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
             <span style="font-size:13px;color:var(--text-muted)">共 <span id="bookingCount">0</span> 筆預約記錄</span>
-            <button class="admin-btn" onclick="exportCSV()">匯出 CSV</button>
+            <button class="admin-btn" onclick="exportCSV(window._lastBookings)">匯出 CSV</button>
           </div>
           <div class="admin-table-wrap">
             <table class="admin-table">
@@ -847,16 +847,28 @@ footer {
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
-/* ════════════════════════════════
-   DATA STORE (localStorage)
-════════════════════════════════ */
-const LS_BOOKINGS = 'luminae_bookings';
-const LS_ADS      = 'luminae_ads';
-const ADMIN_PWD   = 'luminae2025';
+<script type="module">
+// ─── FIREBASE ───
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, onSnapshot, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-function getBookings(){ try{ return JSON.parse(localStorage.getItem(LS_BOOKINGS)||'[]') }catch(e){return[]} }
-function saveBookings(d){ localStorage.setItem(LS_BOOKINGS, JSON.stringify(d)) }
+const firebaseConfig = {
+  apiKey: "AIzaSyDPW_O1CT0yTMViCL8IupuKcCivU4Jsp24",
+  authDomain: "clinic-example-33e48.firebaseapp.com",
+  projectId: "clinic-example-33e48",
+  storageBucket: "clinic-example-33e48.firebasestorage.app",
+  messagingSenderId: "152633237111",
+  appId: "1:152633237111:web:e386784e200c831012f072"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ════════════════════════════════
+   DATA STORE
+   預約: Firebase Firestore (雲端同步)
+   廣告: localStorage
+════════════════════════════════ */
+const ADMIN_PWD = 'luminae2025';
 function getAds(){ 
   const def = [
     { id:'strip', label:'頂部橫幅廣告', active:true,
@@ -929,9 +941,8 @@ function handleFooterAdClick(){
 /* ════════════════════════════════
    BOOKING FORM
 ════════════════════════════════ */
-var SHEET_URL = 'https://script.google.com/macros/s/AKfycbyQBm79FGk0kT3XhFXKvsTj8ceyIVEWC0eCf5fXuGuG32Z7t2SlSiVb3lcsMeQ8YbkL/exec';
-
-function submitBooking(){
+// ── BOOKING FORM (Firebase) ──
+async function submitBooking(){
   var name = document.getElementById('f_name').value.trim();
   var phone = document.getElementById('f_phone').value.trim();
   var treatment = document.getElementById('f_treatment').value;
@@ -939,56 +950,36 @@ function submitBooking(){
     showFormMsg('⚠ 請填寫姓名、電話及意向療程','#cc8888');
     return;
   }
-  var entry = {
-    id: Date.now(),
-    name: name,
-    phone: phone,
-    email: document.getElementById('f_email').value.trim(),
-    treatment: treatment,
-    date: document.getElementById('f_date').value,
-    time: document.getElementById('f_time').value,
-    notes: document.getElementById('f_notes').value.trim(),
-    status: 'new',
-    submittedAt: new Date().toLocaleString('zh-HK')
-  };
-
-  // 先存 localStorage
-  var bookings = getBookings();
-  bookings.unshift(entry);
-  saveBookings(bookings);
-
-  // 顯示提交中
   var btn = document.querySelector('.form-submit');
-  btn.textContent = '提交中...';
-  btn.disabled = true;
+  btn.textContent = '提交中...'; btn.disabled = true;
   showFormMsg('正在提交，請稍候…','#aaa');
-
-  // 用 Image beacon 方式發送到 Google Sheets（最穩定，無 CORS 問題）
-  var img = new Image();
-  var params = 'name=' + encodeURIComponent(entry.name)
-    + '&phone=' + encodeURIComponent(entry.phone)
-    + '&email=' + encodeURIComponent(entry.email)
-    + '&treatment=' + encodeURIComponent(entry.treatment)
-    + '&date=' + encodeURIComponent(entry.date)
-    + '&time=' + encodeURIComponent(entry.time)
-    + '&notes=' + encodeURIComponent(entry.notes)
-    + '&submittedAt=' + encodeURIComponent(entry.submittedAt);
-  img.src = SHEET_URL + '?' + params;
-
-  // 1秒後重設表單並顯示成功
-  setTimeout(function(){
-    btn.textContent = '提交預約申請';
-    btn.disabled = false;
-    showFormMsg('✓ 預約申請已成功提交！我們將於24小時內聯絡您。','#c9a96e');
-    document.getElementById('f_name').value = '';
-    document.getElementById('f_phone').value = '';
-    document.getElementById('f_email').value = '';
-    document.getElementById('f_notes').value = '';
-    document.getElementById('f_treatment').value = '';
-    document.getElementById('f_time').value = '';
-    document.getElementById('f_date').value = '';
+  try {
+    await addDoc(collection(db, 'bookings'), {
+      name: name,
+      phone: phone,
+      email: document.getElementById('f_email').value.trim(),
+      treatment: treatment,
+      date: document.getElementById('f_date').value,
+      time: document.getElementById('f_time').value,
+      notes: document.getElementById('f_notes').value.trim(),
+      status: 'new',
+      submittedAt: new Date().toLocaleString('zh-HK'),
+      timestamp: Date.now()
+    });
+    showFormMsg('✓ 預約申請已成功提交！我們將於24小時內與您聯絡。','#c9a96e');
+    document.getElementById('f_name').value='';
+    document.getElementById('f_phone').value='';
+    document.getElementById('f_email').value='';
+    document.getElementById('f_notes').value='';
+    document.getElementById('f_treatment').value='';
+    document.getElementById('f_time').value='';
+    document.getElementById('f_date').value='';
     showToast('預約申請已提交 ✓');
-  }, 1000);
+  } catch(e) {
+    showFormMsg('提交失敗，請重試或直接電話聯絡我們','#cc8888');
+    console.error(e);
+  }
+  btn.textContent = '提交預約申請'; btn.disabled = false;
 }
 
 function showFormMsg(msg,color){
@@ -1010,14 +1001,31 @@ function openAdmin(){
 function closeAdmin(){
   document.getElementById('adminOverlay').classList.remove('active');
 }
+var unsubscribeBookings = null;
+
 function doLogin(){
-  const pwd = document.getElementById('adminPwd').value;
+  var pwd = document.getElementById('adminPwd').value;
   if(pwd === ADMIN_PWD){
     document.getElementById('adminLogin').style.display='none';
     document.getElementById('adminDash').style.display='block';
     document.getElementById('adminModalTitle').textContent='後台管理系統 — 已登入';
-    renderAdminStats();
-    renderBookingTable();
+    document.getElementById('bookingTbody').innerHTML =
+      '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px">載入中…</td></tr>';
+    // 訂閱 Firestore 即時更新
+    var q = query(collection(db,'bookings'), orderBy('timestamp','desc'));
+    if(unsubscribeBookings) unsubscribeBookings();
+    unsubscribeBookings = onSnapshot(q, function(snapshot){
+      var bookings = [];
+      snapshot.forEach(function(d){
+        bookings.push(Object.assign({docId: d.id}, d.data()));
+      });
+      renderAdminStats(bookings);
+      renderBookingTable(bookings);
+      // bind export button
+      document.querySelector('[onclick="exportCSV(window._lastBookings)"]') &&
+        document.querySelector('[onclick="exportCSV(window._lastBookings)"]').setAttribute('onclick','exportCSV(window._lastBookings)');
+      window._lastBookings = bookings;
+    });
     renderAdManager();
   } else {
     document.getElementById('loginErr').textContent='密碼錯誤，請重新輸入';
@@ -1029,79 +1037,69 @@ function switchTab(name, btn){
   btn.classList.add('active');
   document.getElementById('pane-'+name).classList.add('active');
 }
-function renderAdminStats(){
-  const bookings = getBookings();
-  const newCount = bookings.filter(b=>b.status==='new').length;
-  const todayStr = new Date().toLocaleDateString('zh-HK');
-  const todayCount = bookings.filter(b=>b.submittedAt.startsWith(todayStr)||true).length;
-  document.getElementById('adminStatsRow').innerHTML = `
-    <div class="admin-stat-card"><span class="admin-stat-num">${bookings.length}</span><span class="admin-stat-label">總預約數</span></div>
-    <div class="admin-stat-card"><span class="admin-stat-num">${newCount}</span><span class="admin-stat-label">待處理</span></div>
-    <div class="admin-stat-card"><span class="admin-stat-num">${bookings.filter(b=>b.status==='done').length}</span><span class="admin-stat-label">已完成</span></div>
-    <div class="admin-stat-card"><span class="admin-stat-num">${getAds().filter(a=>a.active).length}</span><span class="admin-stat-label">活躍廣告</span></div>
-  `;
+function renderAdminStats(bookings){
+  var newCount = bookings.filter(function(b){return b.status==='new';}).length;
+  document.getElementById('adminStatsRow').innerHTML =
+    '<div class="admin-stat-card"><span class="admin-stat-num">'+bookings.length+'</span><span class="admin-stat-label">總預約數</span></div>' +
+    '<div class="admin-stat-card"><span class="admin-stat-num">'+newCount+'</span><span class="admin-stat-label">待處理</span></div>' +
+    '<div class="admin-stat-card"><span class="admin-stat-num">'+bookings.filter(function(b){return b.status==='done';}).length+'</span><span class="admin-stat-label">已完成</span></div>' +
+    '<div class="admin-stat-card"><span class="admin-stat-num">'+getAds().filter(function(a){return a.active;}).length+'</span><span class="admin-stat-label">活躍廣告</span></div>';
   document.getElementById('bookingCount').textContent = bookings.length;
 }
-function renderBookingTable(){
-  const bookings = getBookings();
-  const tbody = document.getElementById('bookingTbody');
+
+function renderBookingTable(bookings){
+  var tbody = document.getElementById('bookingTbody');
   if(!bookings.length){
-    tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px">暫無預約記錄</td></tr>';
+    tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px">暂無預約記錄</td></tr>';
     return;
   }
-  tbody.innerHTML = bookings.map((b,i)=>`
-    <tr>
-      <td>${bookings.length-i}</td>
-      <td><strong>${b.name}</strong></td>
-      <td>${b.phone}</td>
-      <td>${b.email||'—'}</td>
-      <td>${b.treatment}</td>
-      <td>${b.date||'—'}</td>
-      <td>${b.time||'—'}</td>
-      <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${b.notes}">${b.notes||'—'}</td>
-      <td>
-        <select onchange="updateStatus(${b.id},this.value)" 
-          style="background:transparent;border:1px solid rgba(201,169,110,0.2);color:var(--text-light);padding:4px 8px;font-size:12px;outline:none;cursor:pointer">
-          <option value="new" ${b.status==='new'?'selected':''}>待處理</option>
-          <option value="pending" ${b.status==='pending'?'selected':''}>跟進中</option>
-          <option value="done" ${b.status==='done'?'selected':''}>已完成</option>
-        </select>
-      </td>
-      <td style="white-space:nowrap;font-size:12px">${b.submittedAt}</td>
-      <td>
-        <div class="admin-actions">
-          <button class="admin-btn danger" onclick="deleteBooking(${b.id})">刪除</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = bookings.map(function(b,i){
+    return '<tr>' +
+      '<td>'+(bookings.length-i)+'</td>' +
+      '<td><strong>'+b.name+'</strong></td>' +
+      '<td>'+b.phone+'</td>' +
+      '<td>'+(b.email||'—')+'</td>' +
+      '<td>'+b.treatment+'</td>' +
+      '<td>'+(b.date||'—')+'</td>' +
+      '<td>'+(b.time||'—')+'</td>' +
+      '<td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+(b.notes||'')+'">'+(b.notes||'—')+'</td>' +
+      '<td><select onchange="updateStatus(''+b.docId+'',this.value)" style="background:transparent;border:1px solid rgba(201,169,110,0.2);color:var(--text-light);padding:4px 8px;font-size:12px;outline:none;cursor:pointer">' +
+        '<option value="new"'+(b.status==='new'?' selected':'')+'>'+'待處理'+'</option>' +
+        '<option value="pending"'+(b.status==='pending'?' selected':'')+'>'+'跟進中'+'</option>' +
+        '<option value="done"'+(b.status==='done'?' selected':'')+'>'+'已完成'+'</option>' +
+      '</select></td>' +
+      '<td style="white-space:nowrap;font-size:12px">'+(b.submittedAt||'')+'</td>' +
+      '<td><div class="admin-actions"><button class="admin-btn danger" onclick="deleteBooking(''+b.docId+'')">'+'刪除'+'</button></div></td>' +
+    '</tr>';
+  }).join('');
 }
-function updateStatus(id, status){
-  const bookings = getBookings();
-  const b = bookings.find(x=>x.id===id);
-  if(b){ b.status=status; saveBookings(bookings); renderAdminStats(); showToast('狀態已更新'); }
+
+async function updateStatus(docId, status){
+  try {
+    await updateDoc(doc(db,'bookings',docId), {status: status});
+    showToast('狀態已更新');
+  } catch(e){ console.error(e); }
 }
-function deleteBooking(id){
+async function deleteBooking(docId){
   if(!confirm('確認刪除此預約記錄？')) return;
-  const bookings = getBookings().filter(b=>b.id!==id);
-  saveBookings(bookings);
-  renderBookingTable(); renderAdminStats();
-  showToast('記錄已刪除');
+  try {
+    await deleteDoc(doc(db,'bookings',docId));
+    showToast('記錄已刪除');
+  } catch(e){ console.error(e); }
 }
-function exportCSV(){
-  const bookings = getBookings();
-  if(!bookings.length){ showToast('沒有可匯出的記錄'); return; }
-  const headers = ['#','姓名','電話','電郵','療程','日期','時間','備註','狀態','提交時間'];
-  const rows = bookings.map((b,i)=>[
-    bookings.length-i, b.name, b.phone, b.email||'', b.treatment,
-    b.date||'', b.time||'', (b.notes||'').replace(/,/g,' '),
-    b.status==='new'?'待處理':b.status==='done'?'已完成':'跟進中',
-    b.submittedAt
-  ]);
-  const csv = [headers, ...rows].map(r=>r.map(c=>`"${c}"`).join(',')).join('\n');
-  const a = document.createElement('a');
+function exportCSV(bookings){
+  if(!bookings||!bookings.length){ showToast('沒有可匯出的記錄'); return; }
+  var headers = ['#','姓名','電話','電郵','療程','日期','時間','備註','狀態','提交時間'];
+  var rows = bookings.map(function(b,i){
+    return [bookings.length-i, b.name, b.phone, b.email||'', b.treatment,
+      b.date||'', b.time||'', (b.notes||'').replace(/,/g,' '),
+      b.status==='new'?'待處理':b.status==='done'?'已完成':'跟進中',
+      b.submittedAt||''];
+  });
+  var csv = [headers].concat(rows).map(function(r){return r.map(function(c){return '"'+c+'"';}).join(',');}).join('\n');
+  var a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
-  a.download = `luminae_bookings_${Date.now()}.csv`;
+  a.download = 'luminae_bookings_'+Date.now()+'.csv';
   a.click();
   showToast('CSV 已匯出');
 }
