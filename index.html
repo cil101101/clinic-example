@@ -1190,26 +1190,11 @@ function renderAdManager(){
   ];
 
   function mkLinkSel(fieldId, currentVal){
-    var knownVals = linkOpts.slice(0,-1).map(function(o){return o.v;});
-    var isKnown   = knownVals.indexOf(currentVal) >= 0;
-    var sel = document.createElement('select');
-    sel.id = fieldId; sel.className = 'select-gold admin-input';
-    linkOpts.forEach(function(o){
-      var opt = document.createElement('option');
-      opt.value = o.v; opt.textContent = o.l;
-      if((!isKnown && o.v==='__custom__') || o.v===currentVal) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    sel.addEventListener('change', function(){ toggleCustomLink(fieldId); });
     var inp = document.createElement('input');
-    inp.type='text'; inp.id=fieldId+'_custom'; inp.placeholder='https://...';
-    inp.className='admin-input';
-    inp.value = (!isKnown && currentVal) ? currentVal : '';
-    inp.style.display = (!isKnown && currentVal) ? 'block' : 'none';
-    inp.style.marginTop = '6px';
-    var wrap = document.createElement('div');
-    wrap.appendChild(sel); wrap.appendChild(inp);
-    return wrap;
+    inp.type='text'; inp.id=fieldId; inp.className='admin-input';
+    inp.placeholder='例: #booking 或 https://...';
+    inp.value = currentVal || '';
+    return inp;
   }
 
   // Clear grid
@@ -1322,21 +1307,13 @@ function renderAdManager(){
   }
 }
 
-function toggleCustomLink(fieldId){
-  var sel = document.getElementById(fieldId);
-  var inp = document.getElementById(fieldId+'_custom');
-  if(sel && inp) inp.style.display = sel.value==='__custom__' ? 'block' : 'none';
-}
 
 
 
 function saveAd(docId){
   var label = document.getElementById('adLabel_'+docId).value;
   var text  = document.getElementById('adText_'+docId).value;
-  var linkSel = document.getElementById('adLink_'+docId);
-  var link = linkSel.value === '__custom__'
-    ? (document.getElementById('adLink_'+docId+'_custom') || {value:''}).value
-    : linkSel.value;
+  var link = (document.getElementById('adLink_'+docId)||{value:''}).value.trim();
   var btn   = document.getElementById('adBtn_'+docId).value;
   var pos   = document.getElementById('adPos_'+docId).value;
   if(!text){ showToast('請填寫廣告內容'); return; }
@@ -1371,10 +1348,7 @@ function deleteAd(docId){
 function createAd(){
   var label = document.getElementById('newAdLabel').value.trim();
   var text  = document.getElementById('newAdText').value.trim();
-  var newLinkSel = document.getElementById('newAdLink');
-  var link = newLinkSel.value === '__custom__'
-    ? (document.getElementById('newAdLink_custom') || {value:'#booking'}).value.trim()
-    : newLinkSel.value;
+  var link = (document.getElementById('newAdLink')||{value:'#booking'}).value.trim() || '#booking';
   var btn   = document.getElementById('newAdBtn').value.trim();
   var pos   = document.getElementById('newAdPos').value;
   if(!text){ showToast('請填寫廣告文字內容'); return; }
