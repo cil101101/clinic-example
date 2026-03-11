@@ -929,20 +929,22 @@ function handleFooterAdClick(){
 /* ════════════════════════════════
    BOOKING FORM
 ════════════════════════════════ */
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyQBm79FGk0kT3XhFXKvsTj8ceyIVEWC0eCf5fXuGuG32Z7t2SlSiVb3lcsMeQ8YbkL/exec';
+var SHEET_URL = 'https://script.google.com/macros/s/AKfycbyQBm79FGk0kT3XhFXKvsTj8ceyIVEWC0eCf5fXuGuG32Z7t2SlSiVb3lcsMeQ8YbkL/exec';
 
-async function submitBooking(){
-  const name = document.getElementById('f_name').value.trim();
-  const phone = document.getElementById('f_phone').value.trim();
-  const treatment = document.getElementById('f_treatment').value;
-  if(!name||!phone||!treatment){
-    showFormMsg('⚠ 請填寫姓名、電話及意向療程','#cc8888'); return;
+function submitBooking(){
+  var name = document.getElementById('f_name').value.trim();
+  var phone = document.getElementById('f_phone').value.trim();
+  var treatment = document.getElementById('f_treatment').value;
+  if(!name || !phone || !treatment){
+    showFormMsg('⚠ 請填寫姓名、電話及意向療程','#cc8888');
+    return;
   }
-  const entry = {
+  var entry = {
     id: Date.now(),
-    name, phone,
+    name: name,
+    phone: phone,
     email: document.getElementById('f_email').value.trim(),
-    treatment,
+    treatment: treatment,
     date: document.getElementById('f_date').value,
     time: document.getElementById('f_time').value,
     notes: document.getElementById('f_notes').value.trim(),
@@ -950,35 +952,45 @@ async function submitBooking(){
     submittedAt: new Date().toLocaleString('zh-HK')
   };
 
-  // 顯示提交中狀態
-  const btn = document.querySelector('.form-submit');
-  btn.textContent = '提交中...'; btn.disabled = true;
-  showFormMsg('正在提交，請稍候…','var(--text-muted)');
-
-  // 同步寫入 Google Sheets
-  try {
-    await fetch(SHEET_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(entry)
-    });
-  } catch(e) {
-    console.warn('Google Sheets 寫入失敗:', e);
-  }
-
-  // 同時保存到 localStorage（後台預覽用）
-  const bookings = getBookings();
+  // 先存 localStorage
+  var bookings = getBookings();
   bookings.unshift(entry);
   saveBookings(bookings);
 
-  btn.textContent = '提交預約申請'; btn.disabled = false;
-  showFormMsg('✓ 預約申請已成功提交！我們將於24小時內聯絡您。','var(--gold)');
-  ['f_name','f_phone','f_email','f_notes'].forEach(id=>document.getElementById(id).value='');
-  ['f_treatment','f_time'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('f_date').value='';
-  showToast('預約申請已提交 ✓');
+  // 顯示提交中
+  var btn = document.querySelector('.form-submit');
+  btn.textContent = '提交中...';
+  btn.disabled = true;
+  showFormMsg('正在提交，請稍候…','#aaa');
+
+  // 用 Image beacon 方式發送到 Google Sheets（最穩定，無 CORS 問題）
+  var img = new Image();
+  var params = 'name=' + encodeURIComponent(entry.name)
+    + '&phone=' + encodeURIComponent(entry.phone)
+    + '&email=' + encodeURIComponent(entry.email)
+    + '&treatment=' + encodeURIComponent(entry.treatment)
+    + '&date=' + encodeURIComponent(entry.date)
+    + '&time=' + encodeURIComponent(entry.time)
+    + '&notes=' + encodeURIComponent(entry.notes)
+    + '&submittedAt=' + encodeURIComponent(entry.submittedAt);
+  img.src = SHEET_URL + '?' + params;
+
+  // 1秒後重設表單並顯示成功
+  setTimeout(function(){
+    btn.textContent = '提交預約申請';
+    btn.disabled = false;
+    showFormMsg('✓ 預約申請已成功提交！我們將於24小時內聯絡您。','#c9a96e');
+    document.getElementById('f_name').value = '';
+    document.getElementById('f_phone').value = '';
+    document.getElementById('f_email').value = '';
+    document.getElementById('f_notes').value = '';
+    document.getElementById('f_treatment').value = '';
+    document.getElementById('f_time').value = '';
+    document.getElementById('f_date').value = '';
+    showToast('預約申請已提交 ✓');
+  }, 1000);
 }
+
 function showFormMsg(msg,color){
   const el=document.getElementById('formMsg');
   el.textContent=msg; el.style.color=color;
