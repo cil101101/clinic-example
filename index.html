@@ -159,7 +159,7 @@ nav.scrolled { background: rgba(10,10,10,0.97); border-bottom: 1px solid rgba(20
   background: linear-gradient(135deg, var(--dark2), var(--dark3));
   border-top: 1px solid rgba(201,169,110,0.2);
   border-bottom: 1px solid rgba(201,169,110,0.2);
-  padding: 16px 60px;
+  padding: 28px 60px;
   display:flex; align-items:center; gap:40px; overflow:hidden;
 }
 .ad-strip-label {
@@ -339,7 +339,7 @@ section { padding: 120px 60px; }
 
 /* ─── FOOTER AD BANNER ─── */
 .footer-ad {
-  padding:40px 60px;
+  padding: 28px 60px;
   background: var(--dark3);
   border-top: 1px solid rgba(201,169,110,0.1);
   border-bottom: 1px solid rgba(201,169,110,0.1);
@@ -577,6 +577,15 @@ footer {
   .admin-stats-row { grid-template-columns:1fr 1fr; }
   .form-row { grid-template-columns:1fr; }
   .ad-strip { padding:14px 24px; }
+}
+
+/* ─── SELECT NO ARROW ─── */
+.select-gold {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background: transparent url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M0 0l6 8 6-8z' fill='%23c9a96e'/></svg>") no-repeat right 10px center;
+  padding-right: 30px;
 }
 </style>
 </head>
@@ -1171,59 +1180,163 @@ function exportCSV(bookings){
 function renderAdManager(){
   var ads = getAds();
   var grid = document.getElementById('adManagerGrid');
-  var html = ads.map(function(ad){
-    var isFixed = (ad.position==='strip' || ad.position==='footer');
-    return '<div class="ad-card" id="adcard_'+(ad.docId||ad.id)+'">' +
-      '<div class="ad-card-header">' +
-        '<div class="ad-card-title">'+ad.label+'</div>' +
-        '<div class="ad-card-status '+(ad.active?'ad-on':'ad-off')+'">'+(ad.active?'● 已啟用':'○ 已停用')+'</div>' +
-      '</div><div class="ad-fields">' +
-        '<div class="ad-field"><label>廣告名稱</label>' +
-          '<input type="text" id="adLabel_'+(ad.docId||ad.id)+'" value="'+ad.label+'"></div>' +
-        '<div class="ad-field"><label>廣告文字內容</label>' +
-          '<textarea id="adText_'+(ad.docId||ad.id)+'" rows="3">'+ad.text+'</textarea></div>' +
-        '<div class="ad-field"><label>連結網址</label>' +
-          '<input type="text" id="adLink_'+(ad.docId||ad.id)+'" value="'+(ad.link||'')+'"></div>' +
-        '<div class="ad-field"><label>按鈕文字 (選填)</label>' +
-          '<input type="text" id="adBtn_'+(ad.docId||ad.id)+'" value="'+(ad.btnText||'')+'"></div>' +
-        '<div class="ad-field"><label>顯示位置</label>' +
-          '<select id="adPos_'+(ad.docId||ad.id)+'"'+(isFixed?' disabled':'')+'>'+
-            '<option value="strip"'+(ad.position==='strip'?' selected':'')+'>頂部橫幅</option>'+
-            '<option value="middle"'+(ad.position==='middle'?' selected':'')+'>中段插入</option>'+
-            '<option value="footer"'+(ad.position==='footer'?' selected':'')+'>底部橫幅</option>'+
-          '</select></div>' +
-      '</div><div class="ad-card-footer">' +
-        '<button class="toggle-btn" onclick="toggleAd(\''+(ad.docId||ad.id)+'\')">'+(ad.active?'停用廣告':'啟用廣告')+'</button>' +
-        (isFixed ? '' : '<button class="admin-btn danger" onclick="deleteAd(\''+(ad.docId||ad.id)+'\')">刪除廣告</button>') +
-        '<button class="save-btn" onclick="saveAd(\''+(ad.docId||ad.id)+'\')">儲存更改</button>' +
-      '</div></div>';
-  }).join('');
+  var linkOpts = [
+    {v:'#booking',    l:'預約表單'},
+    {v:'#treatments', l:'療程介紹'},
+    {v:'#why-us',     l:'為何選擇我們'},
+    {v:'#locations',  l:'分店地址'},
+    {v:'https://wa.me/85298765432', l:'WhatsApp 聯絡'},
+    {v:'__custom__',  l:'自訂網址'}
+  ];
 
-  // 新增廣告按鈕
-  html += '<div class="ad-card" style="border-style:dashed;opacity:0.7">' +
-    '<div class="ad-card-header"><div class="ad-card-title">新增廣告</div></div>' +
-    '<div class="ad-fields">' +
-      '<div class="ad-field"><label>廣告名稱</label><input type="text" id="newAdLabel" placeholder="例：彈出優惠横幅"></div>' +
-      '<div class="ad-field"><label>廣告文字內容</label><textarea id="newAdText" rows="3" placeholder="廣告文字內容…"></textarea></div>' +
-      '<div class="ad-field"><label>連結網址</label><input type="text" id="newAdLink" placeholder="#booking"></div>' +
-      '<div class="ad-field"><label>按鈕文字</label><input type="text" id="newAdBtn" placeholder="立即了解"></div>' +
-      '<div class="ad-field"><label>顯示位置</label>' +
-        '<select id="newAdPos">' +
-          '<option value="middle">中段插入</option>' +
-          '<option value="strip">頂部橫幅</option>' +
-          '<option value="footer">底部橫幅</option>' +
-        '</select></div>' +
-    '</div><div class="ad-card-footer">' +
-      '<button class="save-btn" onclick="createAd()">＋ 新增廣告</button>' +
-    '</div></div>';
+  function mkLinkSel(fieldId, currentVal){
+    var knownVals = linkOpts.slice(0,-1).map(function(o){return o.v;});
+    var isKnown   = knownVals.indexOf(currentVal) >= 0;
+    var sel = document.createElement('select');
+    sel.id = fieldId; sel.className = 'select-gold admin-input';
+    linkOpts.forEach(function(o){
+      var opt = document.createElement('option');
+      opt.value = o.v; opt.textContent = o.l;
+      if((!isKnown && o.v==='__custom__') || o.v===currentVal) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', function(){ toggleCustomLink(fieldId); });
+    var inp = document.createElement('input');
+    inp.type='text'; inp.id=fieldId+'_custom'; inp.placeholder='https://...';
+    inp.className='admin-input';
+    inp.value = (!isKnown && currentVal) ? currentVal : '';
+    inp.style.display = (!isKnown && currentVal) ? 'block' : 'none';
+    inp.style.marginTop = '6px';
+    var wrap = document.createElement('div');
+    wrap.appendChild(sel); wrap.appendChild(inp);
+    return wrap;
+  }
 
-  grid.innerHTML = html;
+  // Clear grid
+  grid.innerHTML = '';
+
+  ads.forEach(function(ad){
+    var key      = ad.docId || ad.id;
+    var isFixed  = (ad.position==='strip' || ad.position==='footer');
+    var posLabel = ad.position==='strip' ? '頂部橫幅' : ad.position==='footer' ? '底部橫幅' : '其他';
+
+    var card = document.createElement('div');
+    card.className = 'ad-card'; card.id = 'adcard_'+key;
+
+    // Header
+    var header = document.createElement('div'); header.className = 'ad-card-header';
+    var title  = document.createElement('div'); title.className  = 'ad-card-title';  title.textContent = ad.label;
+    var status = document.createElement('div'); status.className = 'ad-card-status ' + (ad.active?'ad-on':'ad-off');
+    status.textContent = ad.active ? '● 已啟用' : '○ 已停用';
+    header.appendChild(title); header.appendChild(status);
+
+    // Fields
+    var fields = document.createElement('div'); fields.className = 'ad-fields';
+    function mkField(labelText, el){
+      var d = document.createElement('div'); d.className = 'ad-field';
+      var lbl = document.createElement('label'); lbl.textContent = labelText;
+      d.appendChild(lbl); d.appendChild(el); return d;
+    }
+    function mkInput(id, val){
+      var i = document.createElement('input'); i.type='text'; i.className='admin-input';
+      i.id=id; i.value=val; return i;
+    }
+    function mkTextarea(id, val){
+      var t = document.createElement('textarea'); t.className='admin-input';
+      t.id=id; t.rows=3; t.value=val; return t;
+    }
+
+    fields.appendChild(mkField('廣告名稱',    mkInput('adLabel_'+key, ad.label)));
+    fields.appendChild(mkField('廣告文字內容', mkTextarea('adText_'+key, ad.text)));
+    fields.appendChild(mkField('連結網址',    mkLinkSel('adLink_'+key, ad.link||'')));
+    fields.appendChild(mkField('按鈕文字 (選填)', mkInput('adBtn_'+key, ad.btnText||'')));
+    var posDiv = document.createElement('div'); posDiv.className='ad-field';
+    var posLbl = document.createElement('label'); posLbl.textContent='顯示位置';
+    var posTxt = document.createElement('div');
+    posTxt.style.cssText='padding:8px 0;color:var(--text-light);font-size:13px;';
+    posTxt.textContent = posLabel;
+    var posHid = document.createElement('input'); posHid.type='hidden';
+    posHid.id='adPos_'+key; posHid.value=ad.position;
+    posDiv.appendChild(posLbl); posDiv.appendChild(posTxt); posDiv.appendChild(posHid);
+    fields.appendChild(posDiv);
+
+    // Footer buttons
+    var footer = document.createElement('div'); footer.className = 'ad-card-footer';
+    var toggleBtn = document.createElement('button'); toggleBtn.className='toggle-btn';
+    toggleBtn.textContent = ad.active ? '停用廣告' : '啟用廣告';
+    toggleBtn.addEventListener('click', function(){ toggleAd(key); });
+    footer.appendChild(toggleBtn);
+    if(!isFixed){
+      var delBtn = document.createElement('button'); delBtn.className='admin-btn danger';
+      delBtn.textContent='刪除廣告';
+      delBtn.addEventListener('click', function(){ deleteAd(key); });
+      footer.appendChild(delBtn);
+    }
+    var saveBtn = document.createElement('button'); saveBtn.className='save-btn';
+    saveBtn.textContent='儲存更改';
+    saveBtn.addEventListener('click', function(){ saveAd(key); });
+    footer.appendChild(saveBtn);
+
+    card.appendChild(header); card.appendChild(fields); card.appendChild(footer);
+    grid.appendChild(card);
+  });
+
+  // 新增廣告表單
+  var newCard = document.createElement('div');
+  newCard.className='ad-card'; newCard.style.cssText='border-style:dashed;opacity:0.7';
+  var newHeader = document.createElement('div'); newHeader.className='ad-card-header';
+  var newTitle  = document.createElement('div'); newTitle.className='ad-card-title';
+  newTitle.textContent='新增廣告'; newHeader.appendChild(newTitle);
+  var newFields = document.createElement('div'); newFields.className='ad-fields';
+  function mkNewInput(id, ph){
+    var i=document.createElement('input'); i.type='text'; i.className='admin-input';
+    i.id=id; i.placeholder=ph; return i;
+  }
+  function mkNewTextarea(id, ph){
+    var t=document.createElement('textarea'); t.className='admin-input';
+    t.id=id; t.rows=3; t.placeholder=ph; return t;
+  }
+  newFields.appendChild(mkFieldNew('廣告名稱', mkNewInput('newAdLabel','例：限時優惠横幅')));
+  newFields.appendChild(mkFieldNew('廣告文字內容', mkNewTextarea('newAdText','廣告文字內容…')));
+  newFields.appendChild(mkFieldNew('連結網址', mkLinkSel('newAdLink','#booking')));
+  newFields.appendChild(mkFieldNew('按鈕文字', mkNewInput('newAdBtn','立即了解')));
+  var posSel = document.createElement('select');
+  posSel.id='newAdPos'; posSel.className='select-gold admin-input';
+  [{v:'strip',l:'頂部橫幅'},{v:'footer',l:'底部橫幅'}].forEach(function(o){
+    var opt=document.createElement('option'); opt.value=o.v; opt.textContent=o.l;
+    posSel.appendChild(opt);
+  });
+  newFields.appendChild(mkFieldNew('顯示位置', posSel));
+  var newFooter = document.createElement('div'); newFooter.className='ad-card-footer';
+  var createBtn = document.createElement('button'); createBtn.className='save-btn';
+  createBtn.textContent='＋ 新增廣告';
+  createBtn.addEventListener('click', createAd);
+  newFooter.appendChild(createBtn);
+  newCard.appendChild(newHeader); newCard.appendChild(newFields); newCard.appendChild(newFooter);
+  grid.appendChild(newCard);
+
+  function mkFieldNew(labelText, el){
+    var d=document.createElement('div'); d.className='ad-field';
+    var lbl=document.createElement('label'); lbl.textContent=labelText;
+    d.appendChild(lbl); d.appendChild(el); return d;
+  }
 }
+
+function toggleCustomLink(fieldId){
+  var sel = document.getElementById(fieldId);
+  var inp = document.getElementById(fieldId+'_custom');
+  if(sel && inp) inp.style.display = sel.value==='__custom__' ? 'block' : 'none';
+}
+
+
 
 function saveAd(docId){
   var label = document.getElementById('adLabel_'+docId).value;
   var text  = document.getElementById('adText_'+docId).value;
-  var link  = document.getElementById('adLink_'+docId).value;
+  var linkSel = document.getElementById('adLink_'+docId);
+  var link = linkSel.value === '__custom__'
+    ? (document.getElementById('adLink_'+docId+'_custom') || {value:''}).value
+    : linkSel.value;
   var btn   = document.getElementById('adBtn_'+docId).value;
   var pos   = document.getElementById('adPos_'+docId).value;
   if(!text){ showToast('請填寫廣告內容'); return; }
@@ -1258,7 +1371,10 @@ function deleteAd(docId){
 function createAd(){
   var label = document.getElementById('newAdLabel').value.trim();
   var text  = document.getElementById('newAdText').value.trim();
-  var link  = document.getElementById('newAdLink').value.trim();
+  var newLinkSel = document.getElementById('newAdLink');
+  var link = newLinkSel.value === '__custom__'
+    ? (document.getElementById('newAdLink_custom') || {value:'#booking'}).value.trim()
+    : newLinkSel.value;
   var btn   = document.getElementById('newAdBtn').value.trim();
   var pos   = document.getElementById('newAdPos').value;
   if(!text){ showToast('請填寫廣告文字內容'); return; }
