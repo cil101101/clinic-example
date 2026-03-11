@@ -907,6 +907,8 @@ function fsDeleteDoc(col, docId) {
 /* ════════════════════════════════
    ADS (Firestore - cross-browser sync)
 ════════════════════════════════ */
+var _adsCache = null;
+
 var ADS_DEFAULT = [
   { id:'strip',  label:'頂部橫幅廣告', active:true,
     text:'🌸 限時優惠：首次諮詢免費 + 任選療程85折 — 即日起至月底，名額有限！',
@@ -915,44 +917,42 @@ var ADS_DEFAULT = [
     text:'✨ 會員計劃全新升級 — 累積積分換領頂級療程，立即登記享迎新禮遇',
     link:'#booking', btnText:'立即了解', position:'footer' }
 ];
-var _adsCache = null;
 
 function getAds(){ return _adsCache || ADS_DEFAULT; }
 
-function loadAdsAndRender(){
+// 從 Firestore 載入廣告並渲染
+function loadAdsAndRender(callback){
   fsGetDocs('ads').then(function(docs){
     if(!docs.length){
-      // 首次使用，寫入預設廣告
-      ADS_DEFAULT.forEach(function(ad){
-        fsAddDoc('ads', ad);
+      // 首次：寫入預設廣告，並取回 docId
+      var promises = ADS_DEFAULT.map(function(ad){ return fsAddDoc('ads', ad); });
+      Promise.all(promises).then(function(results){
+        _adsCache = ADS_DEFAULT.map(function(ad, i){
+          var docId = (results[i] && results[i].name) ? results[i].name.split('/').pop() : '';
+          return Object.assign({}, ad, { docId: docId });
+        });
+        renderAds();
+        if(callback) callback();
       });
-      _adsCache = ADS_DEFAULT;
     } else {
-      _adsCache = ADS_DEFAULT.map(function(def){
-        var found = null;
-        docs.forEach(function(d){ if(d.id===def.id) found=d; });
-        return found || def;
+      // docs 已有 docId（由 fsToObj 注入）
+      docs.sort(function(a,b){
+        var order = {strip:0, footer:99};
+        var oa = order[a.position] !== undefined ? order[a.position] : 50;
+        var ob = order[b.position] !== undefined ? order[b.position] : 50;
+        return oa - ob;
       });
+      _adsCache = docs;
+      renderAds();
+      if(callback) callback();
     }
+  }).catch(function(e){
+    console.error('loadAds error:', e);
     renderAds();
-  }).catch(function(){ renderAds(); });
-}
-
-function saveAds(d){
-  _adsCache = d;
-  // 同步到 Firestore
-  d.forEach(function(ad){
-    fsGetDocs('ads').then(function(docs){
-      var existing = null;
-      docs.forEach(function(doc){ if(doc.id===ad.id) existing=doc; });
-      if(existing){
-        fsUpdateDoc('ads', existing.docId, ad);
-      } else {
-        fsAddDoc('ads', ad);
-      }
-    });
+    if(callback) callback();
   });
 }
+
 
 /* ════════════════════════════════
    TREATMENTS
@@ -983,26 +983,35 @@ function renderTreatments(){
 function renderAds(){
   var ads = getAds();
   var strip = null, footer = null;
-  ads.forEach(function(a){ if(a.id==='strip') strip=a; if(a.id==='footer') footer=a; });
+  ads.forEach(function(a){
+    if(a.position==='strip')  strip  = a;
+    if(a.position==='footer') footer = a;
+  });
+
+  // 頂部橫幅
   if(strip){
-    document.getElementById('adStripWrap').style.display = strip.active ? 'flex' : 'none';
+    document.getElementById('adStripWrap').style.display = (strip.active ? 'flex' : 'none');
     var el = document.getElementById('adBanner');
     el.textContent = strip.text; el.href = strip.link || '#';
   }
+
+  // 底部廣告
   if(footer){
-    document.getElementById('footerAdWrap').style.display = footer.active ? 'flex' : 'none';
+    document.getElementById('footerAdWrap').style.display = (footer.active ? 'flex' : 'none');
     document.getElementById('footerAdContent').textContent = footer.text;
-    var btn = document.getElementById('footerAdBtn');
-    btn.textContent = footer.btnText || '立即了解';
-    btn.dataset.link = footer.link || '#';
+    var fbtn = document.getElementById('footerAdBtn');
+    fbtn.textContent = footer.btnText || '立即了解';
+    fbtn.dataset.link = footer.link || '#';
   }
 }
+
 function handleFooterAdClick(){
   var btn = document.getElementById('footerAdBtn');
   var link = btn.dataset.link || '#';
   if(link && link !== '#') window.open(link,'_blank');
   else scrollToEl('#booking');
 }
+
 
 /* ════════════════════════════════
    BOOKING FORM
@@ -1161,37 +1170,108 @@ function exportCSV(bookings){
 ════════════════════════════════ */
 function renderAdManager(){
   var ads = getAds();
-  document.getElementById('adManagerGrid').innerHTML = ads.map(function(ad){
-    return '<div class="ad-card">' +
+  var grid = document.getElementById('adManagerGrid');
+  var html = ads.map(function(ad){
+    var isFixed = (ad.position==='strip' || ad.position==='footer');
+    return '<div class="ad-card" id="adcard_'+(ad.docId||ad.id)+'">' +
       '<div class="ad-card-header">' +
         '<div class="ad-card-title">'+ad.label+'</div>' +
         '<div class="ad-card-status '+(ad.active?'ad-on':'ad-off')+'">'+(ad.active?'● 已啟用':'○ 已停用')+'</div>' +
       '</div><div class="ad-fields">' +
-        '<div class="ad-field"><label>廣告文字內容</label><textarea id="adText_'+ad.id+'" rows="3">'+ad.text+'</textarea></div>' +
-        '<div class="ad-field"><label>連結網址</label><input type="text" id="adLink_'+ad.id+'" value="'+(ad.link||'')+'"></div>' +
-        (ad.id==='footer'?'<div class="ad-field"><label>按鈕文字</label><input type="text" id="adBtn_'+ad.id+'" value="'+(ad.btnText||'立即了解')+'"></div>':'') +
+        '<div class="ad-field"><label>廣告名稱</label>' +
+          '<input type="text" id="adLabel_'+(ad.docId||ad.id)+'" value="'+ad.label+'"></div>' +
+        '<div class="ad-field"><label>廣告文字內容</label>' +
+          '<textarea id="adText_'+(ad.docId||ad.id)+'" rows="3">'+ad.text+'</textarea></div>' +
+        '<div class="ad-field"><label>連結網址</label>' +
+          '<input type="text" id="adLink_'+(ad.docId||ad.id)+'" value="'+(ad.link||'')+'"></div>' +
+        '<div class="ad-field"><label>按鈕文字 (選填)</label>' +
+          '<input type="text" id="adBtn_'+(ad.docId||ad.id)+'" value="'+(ad.btnText||'')+'"></div>' +
+        '<div class="ad-field"><label>顯示位置</label>' +
+          '<select id="adPos_'+(ad.docId||ad.id)+'"'+(isFixed?' disabled':'')+'>'+
+            '<option value="strip"'+(ad.position==='strip'?' selected':'')+'>頂部橫幅</option>'+
+            '<option value="middle"'+(ad.position==='middle'?' selected':'')+'>中段插入</option>'+
+            '<option value="footer"'+(ad.position==='footer'?' selected':'')+'>底部橫幅</option>'+
+          '</select></div>' +
       '</div><div class="ad-card-footer">' +
-        '<button class="toggle-btn" onclick="toggleAd(\''+ad.id+'\')">'+(ad.active?'停用廣告':'啟用廣告')+'</button>' +
-        '<button class="save-btn" onclick="saveAd(\''+ad.id+'\')">儲存更改</button>' +
+        '<button class="toggle-btn" onclick="toggleAd(\''+(ad.docId||ad.id)+'\')">'+(ad.active?'停用廣告':'啟用廣告')+'</button>' +
+        (isFixed ? '' : '<button class="admin-btn danger" onclick="deleteAd(\''+(ad.docId||ad.id)+'\')">刪除廣告</button>') +
+        '<button class="save-btn" onclick="saveAd(\''+(ad.docId||ad.id)+'\')">儲存更改</button>' +
       '</div></div>';
   }).join('');
+
+  // 新增廣告按鈕
+  html += '<div class="ad-card" style="border-style:dashed;opacity:0.7">' +
+    '<div class="ad-card-header"><div class="ad-card-title">新增廣告</div></div>' +
+    '<div class="ad-fields">' +
+      '<div class="ad-field"><label>廣告名稱</label><input type="text" id="newAdLabel" placeholder="例：彈出優惠横幅"></div>' +
+      '<div class="ad-field"><label>廣告文字內容</label><textarea id="newAdText" rows="3" placeholder="廣告文字內容…"></textarea></div>' +
+      '<div class="ad-field"><label>連結網址</label><input type="text" id="newAdLink" placeholder="#booking"></div>' +
+      '<div class="ad-field"><label>按鈕文字</label><input type="text" id="newAdBtn" placeholder="立即了解"></div>' +
+      '<div class="ad-field"><label>顯示位置</label>' +
+        '<select id="newAdPos">' +
+          '<option value="middle">中段插入</option>' +
+          '<option value="strip">頂部橫幅</option>' +
+          '<option value="footer">底部橫幅</option>' +
+        '</select></div>' +
+    '</div><div class="ad-card-footer">' +
+      '<button class="save-btn" onclick="createAd()">＋ 新增廣告</button>' +
+    '</div></div>';
+
+  grid.innerHTML = html;
 }
-function saveAd(id){
+
+function saveAd(docId){
+  var label = document.getElementById('adLabel_'+docId).value;
+  var text  = document.getElementById('adText_'+docId).value;
+  var link  = document.getElementById('adLink_'+docId).value;
+  var btn   = document.getElementById('adBtn_'+docId).value;
+  var pos   = document.getElementById('adPos_'+docId).value;
+  if(!text){ showToast('請填寫廣告內容'); return; }
+  fsUpdateDoc('ads', docId, { label:label, text:text, link:link, btnText:btn, position:pos })
+    .then(function(){
+      showToast('廣告已儲存 ✓');
+      loadAdsAndRender(renderAdManager);
+    }).catch(function(e){ console.error(e); showToast('儲存失敗'); });
+}
+
+function toggleAd(docId){
   var ads = getAds();
-  ads.forEach(function(a){
-    if(a.id===id){
-      a.text = document.getElementById('adText_'+id).value;
-      a.link = document.getElementById('adLink_'+id).value;
-      if(id==='footer') a.btnText = document.getElementById('adBtn_'+id).value;
-    }
-  });
-  saveAds(ads); renderAds(); showToast('廣告內容已儲存 ✓');
+  var ad = null;
+  ads.forEach(function(a){ if((a.docId||a.id)===docId) ad=a; });
+  if(!ad) return;
+  fsUpdateDoc('ads', docId, { active: !ad.active })
+    .then(function(){
+      showToast(ad.active?'廣告已停用':'廣告已啟用');
+      loadAdsAndRender(renderAdManager);
+    }).catch(function(e){ console.error(e); });
 }
-function toggleAd(id){
-  var ads = getAds();
-  ads.forEach(function(a){ if(a.id===id) a.active = !a.active; });
-  saveAds(ads); renderAds(); renderAdManager(); showToast('廣告狀態已更新');
+
+function deleteAd(docId){
+  if(!confirm('確認刪除此廣告？')) return;
+  fsDeleteDoc('ads', docId)
+    .then(function(){
+      showToast('廣告已刪除');
+      loadAdsAndRender(renderAdManager);
+    }).catch(function(e){ console.error(e); });
 }
+
+function createAd(){
+  var label = document.getElementById('newAdLabel').value.trim();
+  var text  = document.getElementById('newAdText').value.trim();
+  var link  = document.getElementById('newAdLink').value.trim();
+  var btn   = document.getElementById('newAdBtn').value.trim();
+  var pos   = document.getElementById('newAdPos').value;
+  if(!text){ showToast('請填寫廣告文字內容'); return; }
+  var newAd = {
+    label: label||'新廣告', text:text, link:link||'#booking',
+    btnText:btn, position:pos, active:true
+  };
+  fsAddDoc('ads', newAd).then(function(){
+    showToast('新廣告已建立 ✓');
+    loadAdsAndRender(renderAdManager);
+  }).catch(function(e){ console.error(e); showToast('建立失敗'); });
+}
+
 
 /* ════════════════════════════════
    UTILS
