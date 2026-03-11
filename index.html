@@ -847,48 +847,84 @@ footer {
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<!-- Firebase CDN (compat version - works with global window scope) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-// ─── FIREBASE INIT ───
-const firebaseConfig = {
-  apiKey: "AIzaSyDPW_O1CT0yTMViCL8IupuKcCivU4Jsp24",
-  authDomain: "clinic-example-33e48.firebaseapp.com",
-  projectId: "clinic-example-33e48",
-  storageBucket: "clinic-example-33e48.firebasestorage.app",
-  messagingSenderId: "152633237111",
-  appId: "1:152633237111:web:e386784e200c831012f072"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+/* ════════════════════════════════
+   CONFIG
+════════════════════════════════ */
+var ADMIN_PWD  = 'luminae2025';
+var LS_ADS     = 'luminae_ads';
+var FB_PROJECT = 'clinic-example-33e48';
+var FB_BASE    = 'https://firestore.googleapis.com/v1/projects/' + FB_PROJECT + '/databases/(default)/documents';
 
 /* ════════════════════════════════
-   DATA STORE
-   預約: Firebase Firestore (雲端同步)
-   廣告: localStorage
+   FIRESTORE REST HELPERS (no SDK needed)
 ════════════════════════════════ */
-const ADMIN_PWD = 'luminae2025';
-function getAds(){ 
-  const def = [
-    { id:'strip', label:'頂部橫幅廣告', active:true,
-      text:'🌸 限時優惠：首次諮詢免費 + 任選療程85折 — 即日起至月底，名額有限！', 
+function fsVal(v) {
+  if (typeof v === 'string')  return { stringValue: v };
+  if (typeof v === 'number')  return { integerValue: v };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  return { stringValue: String(v || '') };
+}
+function fsToObj(doc) {
+  var fields = doc.fields || {};
+  var obj = { docId: doc.name.split('/').pop() };
+  Object.keys(fields).forEach(function(k) {
+    var f = fields[k];
+    obj[k] = f.stringValue  !== undefined ? f.stringValue
+           : f.integerValue !== undefined ? f.integerValue
+           : f.booleanValue !== undefined ? f.booleanValue : '';
+  });
+  return obj;
+}
+function fsAddDoc(col, data) {
+  var fields = {};
+  Object.keys(data).forEach(function(k){ fields[k] = fsVal(data[k]); });
+  return fetch(FB_BASE + '/' + col, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: fields })
+  }).then(function(r){ return r.json(); });
+}
+function fsGetDocs(col) {
+  return fetch(FB_BASE + '/' + col + '?pageSize=200')
+    .then(function(r){ return r.json(); })
+    .then(function(d){ return (d.documents || []).map(fsToObj); });
+}
+function fsUpdateDoc(col, docId, data) {
+  var fields = {};
+  Object.keys(data).forEach(function(k){ fields[k] = fsVal(data[k]); });
+  var mask = Object.keys(data).map(function(k){ return 'updateMask.fieldPaths=' + k; }).join('&');
+  return fetch(FB_BASE + '/' + col + '/' + docId + '?' + mask, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: fields })
+  }).then(function(r){ return r.json(); });
+}
+function fsDeleteDoc(col, docId) {
+  return fetch(FB_BASE + '/' + col + '/' + docId, { method: 'DELETE' });
+}
+
+/* ════════════════════════════════
+   ADS (localStorage)
+════════════════════════════════ */
+function getAds(){
+  var def = [
+    { id:'strip',  label:'頂部橫幅廣告', active:true,
+      text:'🌸 限時優惠：首次諮詢免費 + 任選療程85折 — 即日起至月底，名額有限！',
       link:'#booking', btnText:'', position:'strip' },
     { id:'footer', label:'底部廣告橫幅', active:true,
       text:'✨ 會員計劃全新升級 — 累積積分換領頂級療程，立即登記享迎新禮遇',
       link:'#booking', btnText:'立即了解', position:'footer' }
   ];
-  try{
-    const saved = JSON.parse(localStorage.getItem(LS_ADS)||'null');
-    return saved || def;
-  }catch(e){ return def; }
+  try { var s = JSON.parse(localStorage.getItem(LS_ADS)||'null'); return s||def; }
+  catch(e){ return def; }
 }
-function saveAds(d){ localStorage.setItem(LS_ADS, JSON.stringify(d)) }
+function saveAds(d){ localStorage.setItem(LS_ADS, JSON.stringify(d)); }
 
 /* ════════════════════════════════
-   TREATMENTS DATA
+   TREATMENTS
 ════════════════════════════════ */
-const treatments = [
+var treatments = [
   { icon:'✦', name:'緊緻提升', desc:'採用最新射頻及超聲波技術，深層刺激膠原蛋白再生，一次療程即見明顯提升效果', price:'HK$ 3,800起' },
   { icon:'❋', name:'美白修護', desc:'皮秒激光精準去除色斑及暗沉，配合哈佛冷凍美白技術，還原通透亮白肌膚', price:'HK$ 2,800起' },
   { icon:'◈', name:'眼部護理', desc:'專針對眼袋、眼紋、眼周暗沉等問題，英國頂尖技術令眼神更明亮年輕', price:'HK$ 1,800起' },
@@ -896,55 +932,51 @@ const treatments = [
   { icon:'◇', name:'纖體塑型', desc:'冷凍溶脂結合電磁波塑肌，非入侵式精準消脂，塑造理想身型輪廓', price:'HK$ 4,500起' },
   { icon:'❈', name:'深層清潔', desc:'多重清潔技術深層疏通毛孔，去除老化角質及黑頭，恢復細緻柔嫩肌膚', price:'HK$ 980起' },
 ];
-
 function renderTreatments(){
-  const g = document.getElementById('treatmentGrid');
-  g.innerHTML = treatments.map((t,i)=>`
-    <div class="treatment-card">
-      <span class="treatment-num">0${i+1}</span>
-      <span class="treatment-icon">${t.icon}</span>
-      <div class="treatment-name">${t.name}</div>
-      <p class="treatment-desc">${t.desc}</p>
-      <div class="treatment-price">${t.price}</div>
-    </div>
-  `).join('');
+  var g = document.getElementById('treatmentGrid');
+  g.innerHTML = treatments.map(function(t,i){
+    return '<div class="treatment-card">' +
+      '<span class="treatment-num">0'+(i+1)+'</span>' +
+      '<span class="treatment-icon">'+t.icon+'</span>' +
+      '<div class="treatment-name">'+t.name+'</div>' +
+      '<p class="treatment-desc">'+t.desc+'</p>' +
+      '<div class="treatment-price">'+t.price+'</div></div>';
+  }).join('');
 }
 
 /* ════════════════════════════════
    ADS RENDER
 ════════════════════════════════ */
 function renderAds(){
-  const ads = getAds();
-  const strip = ads.find(a=>a.id==='strip');
-  const footer = ads.find(a=>a.id==='footer');
+  var ads = getAds();
+  var strip = null, footer = null;
+  ads.forEach(function(a){ if(a.id==='strip') strip=a; if(a.id==='footer') footer=a; });
   if(strip){
     document.getElementById('adStripWrap').style.display = strip.active ? 'flex' : 'none';
-    const el = document.getElementById('adBanner');
-    el.textContent = strip.text;
-    el.href = strip.link || '#';
+    var el = document.getElementById('adBanner');
+    el.textContent = strip.text; el.href = strip.link || '#';
   }
   if(footer){
     document.getElementById('footerAdWrap').style.display = footer.active ? 'flex' : 'none';
     document.getElementById('footerAdContent').textContent = footer.text;
-    const btn = document.getElementById('footerAdBtn');
+    var btn = document.getElementById('footerAdBtn');
     btn.textContent = footer.btnText || '立即了解';
     btn.dataset.link = footer.link || '#';
   }
 }
 function handleFooterAdClick(){
-  const btn = document.getElementById('footerAdBtn');
-  const link = btn.dataset.link || '#';
+  var btn = document.getElementById('footerAdBtn');
+  var link = btn.dataset.link || '#';
   if(link && link !== '#') window.open(link,'_blank');
-  else scrollTo('#booking');
+  else scrollToEl('#booking');
 }
 
 /* ════════════════════════════════
    BOOKING FORM
 ════════════════════════════════ */
-// ── BOOKING FORM (Firebase) ──
-async function submitBooking(){
-  var name = document.getElementById('f_name').value.trim();
-  var phone = document.getElementById('f_phone').value.trim();
+function submitBooking(){
+  var name      = document.getElementById('f_name').value.trim();
+  var phone     = document.getElementById('f_phone').value.trim();
   var treatment = document.getElementById('f_treatment').value;
   if(!name || !phone || !treatment){
     showFormMsg('⚠ 請填寫姓名、電話及意向療程','#cc8888');
@@ -953,39 +985,34 @@ async function submitBooking(){
   var btn = document.querySelector('.form-submit');
   btn.textContent = '提交中...'; btn.disabled = true;
   showFormMsg('正在提交，請稍候…','#aaa');
-  try {
-    await db.collection('bookings').add({
-      name: name,
-      phone: phone,
-      email: document.getElementById('f_email').value.trim(),
-      treatment: treatment,
-      date: document.getElementById('f_date').value,
-      time: document.getElementById('f_time').value,
-      notes: document.getElementById('f_notes').value.trim(),
-      status: 'new',
-      submittedAt: new Date().toLocaleString('zh-HK'),
-      timestamp: Date.now()
-    });
-    showFormMsg('✓ 預約申請已成功提交！我們將於24小時內與您聯絡。','#c9a96e');
-    document.getElementById('f_name').value='';
-    document.getElementById('f_phone').value='';
-    document.getElementById('f_email').value='';
-    document.getElementById('f_notes').value='';
-    document.getElementById('f_treatment').value='';
-    document.getElementById('f_time').value='';
-    document.getElementById('f_date').value='';
+  var entry = {
+    name: name, phone: phone,
+    email:     document.getElementById('f_email').value.trim(),
+    treatment: treatment,
+    date:      document.getElementById('f_date').value,
+    time:      document.getElementById('f_time').value,
+    notes:     document.getElementById('f_notes').value.trim(),
+    status:    'new',
+    submittedAt: new Date().toLocaleString('zh-HK'),
+    timestamp:   String(Date.now())
+  };
+  fsAddDoc('bookings', entry).then(function(){
+    btn.textContent = '提交預約申請'; btn.disabled = false;
+    showFormMsg('✓ 預約申請已成功提交！我們將於24小時內聯絡您。','#c9a96e');
+    ['f_name','f_phone','f_email','f_notes'].forEach(function(id){ document.getElementById(id).value=''; });
+    ['f_treatment','f_time'].forEach(function(id){ document.getElementById(id).value=''; });
+    document.getElementById('f_date').value = '';
     showToast('預約申請已提交 ✓');
-  } catch(e) {
-    showFormMsg('提交失敗，請重試或直接電話聯絡我們','#cc8888');
+  }).catch(function(e){
+    btn.textContent = '提交預約申請'; btn.disabled = false;
+    showFormMsg('提交失敗，請重試或電話聯絡我們','#cc8888');
     console.error(e);
-  }
-  btn.textContent = '提交預約申請'; btn.disabled = false;
+  });
 }
-
 function showFormMsg(msg,color){
-  const el=document.getElementById('formMsg');
-  el.textContent=msg; el.style.color=color;
-  setTimeout(()=>el.textContent='',6000);
+  var el = document.getElementById('formMsg');
+  el.textContent = msg; el.style.color = color;
+  setTimeout(function(){ el.textContent=''; }, 6000);
 }
 
 /* ════════════════════════════════
@@ -993,98 +1020,90 @@ function showFormMsg(msg,color){
 ════════════════════════════════ */
 function openAdmin(){
   document.getElementById('adminOverlay').classList.add('active');
-  document.getElementById('adminLogin').style.display='block';
-  document.getElementById('adminDash').style.display='none';
-  document.getElementById('adminPwd').value='';
-  document.getElementById('loginErr').textContent='';
+  document.getElementById('adminLogin').style.display = 'block';
+  document.getElementById('adminDash').style.display = 'none';
+  document.getElementById('adminPwd').value = '';
+  document.getElementById('loginErr').textContent = '';
 }
 function closeAdmin(){
   document.getElementById('adminOverlay').classList.remove('active');
 }
-var unsubscribeBookings = null;
-
 function doLogin(){
   var pwd = document.getElementById('adminPwd').value;
-  if(pwd === ADMIN_PWD){
-    document.getElementById('adminLogin').style.display='none';
-    document.getElementById('adminDash').style.display='block';
-    document.getElementById('adminModalTitle').textContent='後台管理系統 — 已登入';
-    document.getElementById('bookingTbody').innerHTML =
-      '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px">載入中…</td></tr>';
-    // 訂閱 Firestore 即時更新
-    if(unsubscribeBookings) unsubscribeBookings();
-    unsubscribeBookings = db.collection('bookings').orderBy('timestamp','desc').onSnapshot(function(snapshot){
-      var bookings = [];
-      snapshot.forEach(function(d){
-        bookings.push(Object.assign({docId: d.id}, d.data()));
-      });
-      renderAdminStats(bookings);
-      renderBookingTable(bookings);
-      // bind export button
-      document.querySelector('[onclick="exportCSV(window._lastBookings)"]') &&
-        document.querySelector('[onclick="exportCSV(window._lastBookings)"]').setAttribute('onclick','exportCSV(window._lastBookings)');
-      window._lastBookings = bookings;
-    });
-    renderAdManager();
-  } else {
-    document.getElementById('loginErr').textContent='密碼錯誤，請重新輸入';
+  if(pwd !== ADMIN_PWD){
+    document.getElementById('loginErr').textContent = '密碼錯誤，請重新輸入';
+    return;
   }
+  document.getElementById('adminLogin').style.display = 'none';
+  document.getElementById('adminDash').style.display = 'block';
+  document.getElementById('adminModalTitle').textContent = '後台管理系統 — 已登入';
+  document.getElementById('bookingTbody').innerHTML =
+    '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px">載入中…</td></tr>';
+  loadBookings();
+  renderAdManager();
+}
+function loadBookings(){
+  fsGetDocs('bookings').then(function(bookings){
+    bookings.sort(function(a,b){ return Number(b.timestamp||0) - Number(a.timestamp||0); });
+    window._lastBookings = bookings;
+    renderAdminStats(bookings);
+    renderBookingTable(bookings);
+  }).catch(function(e){ console.error('Load error:', e); });
 }
 function switchTab(name, btn){
-  document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.admin-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.admin-tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.admin-pane').forEach(function(p){ p.classList.remove('active'); });
   btn.classList.add('active');
   document.getElementById('pane-'+name).classList.add('active');
 }
 function renderAdminStats(bookings){
-  var newCount = bookings.filter(function(b){return b.status==='new';}).length;
+  var newCount  = bookings.filter(function(b){ return b.status==='new'; }).length;
+  var doneCount = bookings.filter(function(b){ return b.status==='done'; }).length;
   document.getElementById('adminStatsRow').innerHTML =
     '<div class="admin-stat-card"><span class="admin-stat-num">'+bookings.length+'</span><span class="admin-stat-label">總預約數</span></div>' +
     '<div class="admin-stat-card"><span class="admin-stat-num">'+newCount+'</span><span class="admin-stat-label">待處理</span></div>' +
-    '<div class="admin-stat-card"><span class="admin-stat-num">'+bookings.filter(function(b){return b.status==='done';}).length+'</span><span class="admin-stat-label">已完成</span></div>' +
+    '<div class="admin-stat-card"><span class="admin-stat-num">'+doneCount+'</span><span class="admin-stat-label">已完成</span></div>' +
     '<div class="admin-stat-card"><span class="admin-stat-num">'+getAds().filter(function(a){return a.active;}).length+'</span><span class="admin-stat-label">活躍廣告</span></div>';
   document.getElementById('bookingCount').textContent = bookings.length;
 }
-
 function renderBookingTable(bookings){
   var tbody = document.getElementById('bookingTbody');
   if(!bookings.length){
-    tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px">暂無預約記錄</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px">暫無預約記錄</td></tr>';
     return;
   }
-  tbody.innerHTML = bookings.map(function(b,i){
+  tbody.innerHTML = bookings.map(function(b, i){
+    var sel =
+      '<select onchange="updateStatus(\'' + b.docId + '\',this.value)" style="background:transparent;border:1px solid rgba(201,169,110,0.2);color:var(--text-light);padding:4px 8px;font-size:12px;outline:none;cursor:pointer">' +
+      '<option value="new"'     +(b.status==='new'    ?' selected':'')+'>待處理</option>' +
+      '<option value="pending"' +(b.status==='pending'?' selected':'')+'>跟進中</option>' +
+      '<option value="done"'    +(b.status==='done'   ?' selected':'')+'>已完成</option>' +
+      '</select>';
     return '<tr>' +
       '<td>'+(bookings.length-i)+'</td>' +
-      '<td><strong>'+b.name+'</strong></td>' +
-      '<td>'+b.phone+'</td>' +
+      '<td><strong>'+(b.name||'')+'</strong></td>' +
+      '<td>'+(b.phone||'')+'</td>' +
       '<td>'+(b.email||'—')+'</td>' +
-      '<td>'+b.treatment+'</td>' +
+      '<td>'+(b.treatment||'')+'</td>' +
       '<td>'+(b.date||'—')+'</td>' +
       '<td>'+(b.time||'—')+'</td>' +
-      '<td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+(b.notes||'')+'">'+(b.notes||'—')+'</td>' +
-      '<td><select onchange="updateStatus(''+b.docId+'',this.value)" style="background:transparent;border:1px solid rgba(201,169,110,0.2);color:var(--text-light);padding:4px 8px;font-size:12px;outline:none;cursor:pointer">' +
-        '<option value="new"'+(b.status==='new'?' selected':'')+'>'+'待處理'+'</option>' +
-        '<option value="pending"'+(b.status==='pending'?' selected':'')+'>'+'跟進中'+'</option>' +
-        '<option value="done"'+(b.status==='done'?' selected':'')+'>'+'已完成'+'</option>' +
-      '</select></td>' +
+      '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(b.notes||'')+'">'+(b.notes||'—')+'</td>' +
+      '<td>'+sel+'</td>' +
       '<td style="white-space:nowrap;font-size:12px">'+(b.submittedAt||'')+'</td>' +
-      '<td><div class="admin-actions"><button class="admin-btn danger" onclick="deleteBooking(''+b.docId+'')">'+'刪除'+'</button></div></td>' +
+      '<td><button class="admin-btn danger" onclick="deleteBooking(\''+b.docId+'\')">刪除</button></td>' +
     '</tr>';
   }).join('');
 }
-
-async function updateStatus(docId, status){
-  try {
-    await db.collection('bookings').doc(docId).update({status: status});
-    showToast('狀態已更新');
-  } catch(e){ console.error(e); }
+function updateStatus(docId, status){
+  fsUpdateDoc('bookings', docId, {status: status})
+    .then(function(){ showToast('狀態已更新'); loadBookings(); })
+    .catch(function(e){ console.error(e); });
 }
-async function deleteBooking(docId){
+function deleteBooking(docId){
   if(!confirm('確認刪除此預約記錄？')) return;
-  try {
-    await db.collection('bookings').doc(docId).delete();
-    showToast('記錄已刪除');
-  } catch(e){ console.error(e); }
+  fsDeleteDoc('bookings', docId)
+    .then(function(){ showToast('記錄已刪除'); loadBookings(); })
+    .catch(function(e){ console.error(e); });
 }
 function exportCSV(bookings){
   if(!bookings||!bookings.length){ showToast('沒有可匯出的記錄'); return; }
@@ -1092,13 +1111,14 @@ function exportCSV(bookings){
   var rows = bookings.map(function(b,i){
     return [bookings.length-i, b.name, b.phone, b.email||'', b.treatment,
       b.date||'', b.time||'', (b.notes||'').replace(/,/g,' '),
-      b.status==='new'?'待處理':b.status==='done'?'已完成':'跟進中',
-      b.submittedAt||''];
+      b.status==='new'?'待處理':b.status==='done'?'已完成':'跟進中', b.submittedAt||''];
   });
-  var csv = [headers].concat(rows).map(function(r){return r.map(function(c){return '"'+c+'"';}).join(',');}).join('\n');
+  var csv = [headers].concat(rows).map(function(r){
+    return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(',');
+  }).join('\n');
   var a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
-  a.download = 'luminae_bookings_'+Date.now()+'.csv';
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = 'luminae_bookings_' + Date.now() + '.csv';
   a.click();
   showToast('CSV 已匯出');
 }
@@ -1107,89 +1127,63 @@ function exportCSV(bookings){
    AD MANAGER
 ════════════════════════════════ */
 function renderAdManager(){
-  const ads = getAds();
-  const grid = document.getElementById('adManagerGrid');
-  grid.innerHTML = ads.map(ad=>`
-    <div class="ad-card">
-      <div class="ad-card-header">
-        <div class="ad-card-title">${ad.label}</div>
-        <div class="ad-card-status ${ad.active?'ad-on':'ad-off'}" id="adStatus_${ad.id}">
-          ${ad.active?'● 已啟用':'○ 已停用'}
-        </div>
-      </div>
-      <div class="ad-fields">
-        <div class="ad-field">
-          <label>廣告文字內容</label>
-          <textarea id="adText_${ad.id}" rows="3">${ad.text}</textarea>
-        </div>
-        <div class="ad-field">
-          <label>連結網址</label>
-          <input type="text" id="adLink_${ad.id}" value="${ad.link||''}">
-        </div>
-        ${ad.id==='footer'?`
-        <div class="ad-field">
-          <label>按鈕文字</label>
-          <input type="text" id="adBtn_${ad.id}" value="${ad.btnText||'立即了解'}">
-        </div>`:''}
-      </div>
-      <div class="ad-card-footer">
-        <button class="toggle-btn" onclick="toggleAd('${ad.id}')">
-          ${ad.active?'停用廣告':'啟用廣告'}
-        </button>
-        <button class="save-btn" onclick="saveAd('${ad.id}')">儲存更改</button>
-      </div>
-    </div>
-  `).join('');
+  var ads = getAds();
+  document.getElementById('adManagerGrid').innerHTML = ads.map(function(ad){
+    return '<div class="ad-card">' +
+      '<div class="ad-card-header">' +
+        '<div class="ad-card-title">'+ad.label+'</div>' +
+        '<div class="ad-card-status '+(ad.active?'ad-on':'ad-off')+'">'+(ad.active?'● 已啟用':'○ 已停用')+'</div>' +
+      '</div><div class="ad-fields">' +
+        '<div class="ad-field"><label>廣告文字內容</label><textarea id="adText_'+ad.id+'" rows="3">'+ad.text+'</textarea></div>' +
+        '<div class="ad-field"><label>連結網址</label><input type="text" id="adLink_'+ad.id+'" value="'+(ad.link||'')+'"></div>' +
+        (ad.id==='footer'?'<div class="ad-field"><label>按鈕文字</label><input type="text" id="adBtn_'+ad.id+'" value="'+(ad.btnText||'立即了解')+'"></div>':'') +
+      '</div><div class="ad-card-footer">' +
+        '<button class="toggle-btn" onclick="toggleAd(\''+ad.id+'\')">'+(ad.active?'停用廣告':'啟用廣告')+'</button>' +
+        '<button class="save-btn" onclick="saveAd(\''+ad.id+'\')">儲存更改</button>' +
+      '</div></div>';
+  }).join('');
 }
 function saveAd(id){
-  const ads = getAds();
-  const ad = ads.find(a=>a.id===id);
-  if(!ad) return;
-  ad.text = document.getElementById('adText_'+id).value;
-  ad.link = document.getElementById('adLink_'+id).value;
-  if(id==='footer') ad.btnText = document.getElementById('adBtn_'+id).value;
-  saveAds(ads);
-  renderAds();
-  showToast('廣告內容已儲存 ✓');
+  var ads = getAds();
+  ads.forEach(function(a){
+    if(a.id===id){
+      a.text = document.getElementById('adText_'+id).value;
+      a.link = document.getElementById('adLink_'+id).value;
+      if(id==='footer') a.btnText = document.getElementById('adBtn_'+id).value;
+    }
+  });
+  saveAds(ads); renderAds(); showToast('廣告內容已儲存 ✓');
 }
 function toggleAd(id){
-  const ads = getAds();
-  const ad = ads.find(a=>a.id===id);
-  if(!ad) return;
-  ad.active = !ad.active;
-  saveAds(ads);
-  renderAds();
-  renderAdManager();
-  renderAdminStats();
-  showToast(ad.active?'廣告已啟用':'廣告已停用');
+  var ads = getAds();
+  ads.forEach(function(a){ if(a.id===id) a.active = !a.active; });
+  saveAds(ads); renderAds(); renderAdManager(); showToast('廣告狀態已更新');
 }
 
 /* ════════════════════════════════
    UTILS
 ════════════════════════════════ */
-function scrollTo(hash){
-  const el = document.querySelector(hash);
-  if(el) el.scrollIntoView({behavior:'smooth'});
-}
+function scrollToEl(hash){ var el=document.querySelector(hash); if(el) el.scrollIntoView({behavior:'smooth'}); }
+function scrollTo(hash){ scrollToEl(hash); }
 function showToast(msg){
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 3000);
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); }, 3000);
 }
-window.addEventListener('scroll',()=>{
+window.addEventListener('scroll', function(){
   document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 60);
 });
-document.getElementById('adminOverlay').addEventListener('click',function(e){
+document.getElementById('adminOverlay').addEventListener('click', function(e){
   if(e.target===this) closeAdmin();
 });
-document.addEventListener('keydown',function(e){
+document.addEventListener('keydown', function(e){
   if(e.key==='Escape') closeAdmin();
 });
 
 /* INIT */
 renderTreatments();
 renderAds();
+
 </script>
 </body>
 </html>
