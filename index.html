@@ -905,21 +905,54 @@ function fsDeleteDoc(col, docId) {
 }
 
 /* ════════════════════════════════
-   ADS (localStorage)
+   ADS (Firestore - cross-browser sync)
 ════════════════════════════════ */
-function getAds(){
-  var def = [
-    { id:'strip',  label:'頂部橫幅廣告', active:true,
-      text:'🌸 限時優惠：首次諮詢免費 + 任選療程85折 — 即日起至月底，名額有限！',
-      link:'#booking', btnText:'', position:'strip' },
-    { id:'footer', label:'底部廣告橫幅', active:true,
-      text:'✨ 會員計劃全新升級 — 累積積分換領頂級療程，立即登記享迎新禮遇',
-      link:'#booking', btnText:'立即了解', position:'footer' }
-  ];
-  try { var s = JSON.parse(localStorage.getItem(LS_ADS)||'null'); return s||def; }
-  catch(e){ return def; }
+var ADS_DEFAULT = [
+  { id:'strip',  label:'頂部橫幅廣告', active:true,
+    text:'🌸 限時優惠：首次諮詢免費 + 任選療程85折 — 即日起至月底，名額有限！',
+    link:'#booking', btnText:'', position:'strip' },
+  { id:'footer', label:'底部廣告橫幅', active:true,
+    text:'✨ 會員計劃全新升級 — 累積積分換領頂級療程，立即登記享迎新禮遇',
+    link:'#booking', btnText:'立即了解', position:'footer' }
+];
+var _adsCache = null;
+
+function getAds(){ return _adsCache || ADS_DEFAULT; }
+
+function loadAdsAndRender(){
+  fsGetDocs('ads').then(function(docs){
+    if(!docs.length){
+      // 首次使用，寫入預設廣告
+      ADS_DEFAULT.forEach(function(ad){
+        fsAddDoc('ads', ad);
+      });
+      _adsCache = ADS_DEFAULT;
+    } else {
+      _adsCache = ADS_DEFAULT.map(function(def){
+        var found = null;
+        docs.forEach(function(d){ if(d.id===def.id) found=d; });
+        return found || def;
+      });
+    }
+    renderAds();
+  }).catch(function(){ renderAds(); });
 }
-function saveAds(d){ localStorage.setItem(LS_ADS, JSON.stringify(d)); }
+
+function saveAds(d){
+  _adsCache = d;
+  // 同步到 Firestore
+  d.forEach(function(ad){
+    fsGetDocs('ads').then(function(docs){
+      var existing = null;
+      docs.forEach(function(doc){ if(doc.id===ad.id) existing=doc; });
+      if(existing){
+        fsUpdateDoc('ads', existing.docId, ad);
+      } else {
+        fsAddDoc('ads', ad);
+      }
+    });
+  });
+}
 
 /* ════════════════════════════════
    TREATMENTS
@@ -1182,7 +1215,7 @@ document.addEventListener('keydown', function(e){
 
 /* INIT */
 renderTreatments();
-renderAds();
+loadAdsAndRender();
 
 </script>
 </body>
