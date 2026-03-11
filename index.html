@@ -847,11 +847,11 @@ footer {
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<script type="module">
-// ─── FIREBASE ───
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, onSnapshot, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
+<!-- Firebase CDN (compat version - works with global window scope) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+// ─── FIREBASE INIT ───
 const firebaseConfig = {
   apiKey: "AIzaSyDPW_O1CT0yTMViCL8IupuKcCivU4Jsp24",
   authDomain: "clinic-example-33e48.firebaseapp.com",
@@ -860,8 +860,8 @@ const firebaseConfig = {
   messagingSenderId: "152633237111",
   appId: "1:152633237111:web:e386784e200c831012f072"
 };
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
 /* ════════════════════════════════
    DATA STORE
@@ -954,7 +954,7 @@ async function submitBooking(){
   btn.textContent = '提交中...'; btn.disabled = true;
   showFormMsg('正在提交，請稍候…','#aaa');
   try {
-    await addDoc(collection(db, 'bookings'), {
+    await db.collection('bookings').add({
       name: name,
       phone: phone,
       email: document.getElementById('f_email').value.trim(),
@@ -1012,9 +1012,8 @@ function doLogin(){
     document.getElementById('bookingTbody').innerHTML =
       '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:40px">載入中…</td></tr>';
     // 訂閱 Firestore 即時更新
-    var q = query(collection(db,'bookings'), orderBy('timestamp','desc'));
     if(unsubscribeBookings) unsubscribeBookings();
-    unsubscribeBookings = onSnapshot(q, function(snapshot){
+    unsubscribeBookings = db.collection('bookings').orderBy('timestamp','desc').onSnapshot(function(snapshot){
       var bookings = [];
       snapshot.forEach(function(d){
         bookings.push(Object.assign({docId: d.id}, d.data()));
@@ -1076,14 +1075,14 @@ function renderBookingTable(bookings){
 
 async function updateStatus(docId, status){
   try {
-    await updateDoc(doc(db,'bookings',docId), {status: status});
+    await db.collection('bookings').doc(docId).update({status: status});
     showToast('狀態已更新');
   } catch(e){ console.error(e); }
 }
 async function deleteBooking(docId){
   if(!confirm('確認刪除此預約記錄？')) return;
   try {
-    await deleteDoc(doc(db,'bookings',docId));
+    await db.collection('bookings').doc(docId).delete();
     showToast('記錄已刪除');
   } catch(e){ console.error(e); }
 }
