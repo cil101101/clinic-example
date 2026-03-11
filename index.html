@@ -697,7 +697,7 @@ footer {
       <div class="contact-items">
         <div class="contact-item"><span class="contact-item-icon">📍</span><span class="contact-item-text">香港中環皇后大道中100號</span></div>
         <div class="contact-item"><span class="contact-item-icon">📞</span><span class="contact-item-text">+852 2345 6789</span></div>
-        <div class="contact-item"><span class="contact-item-icon">📧</span><span class="contact-item-text">hello@luminaeclinic.com</span></div>
+        <div class="contact-item"><span class="contact-item-icon">📧</span><span class="contact-item-text"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="c4aca1a8a8ab84a8b1a9adaaa5a1a7a8adaaada7eaa7aba9">[email&#160;protected]</a></span></div>
         <div class="contact-item"><span class="contact-item-icon">⏰</span><span class="contact-item-text">週一至日：10:00 – 21:00</span></div>
       </div>
     </div>
@@ -847,13 +847,13 @@ footer {
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 /* ════════════════════════════════
    DATA STORE (localStorage)
 ════════════════════════════════ */
 const LS_BOOKINGS = 'luminae_bookings';
 const LS_ADS      = 'luminae_ads';
-const ADMIN_PWD   = '0000000000';
+const ADMIN_PWD   = 'luminae2025';
 
 function getBookings(){ try{ return JSON.parse(localStorage.getItem(LS_BOOKINGS)||'[]') }catch(e){return[]} }
 function saveBookings(d){ localStorage.setItem(LS_BOOKINGS, JSON.stringify(d)) }
@@ -929,12 +929,14 @@ function handleFooterAdClick(){
 /* ════════════════════════════════
    BOOKING FORM
 ════════════════════════════════ */
-function submitBooking(){
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyQBm79FGk0kT3XhFXKvsTj8ceyIVEWC0eCf5fXuGuG32Z7t2SlSiVb3lcsMeQ8YbkL/exec';
+
+async function submitBooking(){
   const name = document.getElementById('f_name').value.trim();
   const phone = document.getElementById('f_phone').value.trim();
   const treatment = document.getElementById('f_treatment').value;
   if(!name||!phone||!treatment){
-    showFormMsg('⚠ 請填寫姓名、電話及意向療程','#cc8888');return;
+    showFormMsg('⚠ 請填寫姓名、電話及意向療程','#cc8888'); return;
   }
   const entry = {
     id: Date.now(),
@@ -947,9 +949,30 @@ function submitBooking(){
     status: 'new',
     submittedAt: new Date().toLocaleString('zh-HK')
   };
+
+  // 顯示提交中狀態
+  const btn = document.querySelector('.form-submit');
+  btn.textContent = '提交中...'; btn.disabled = true;
+  showFormMsg('正在提交，請稍候…','var(--text-muted)');
+
+  // 同步寫入 Google Sheets
+  try {
+    await fetch(SHEET_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry)
+    });
+  } catch(e) {
+    console.warn('Google Sheets 寫入失敗:', e);
+  }
+
+  // 同時保存到 localStorage（後台預覽用）
   const bookings = getBookings();
   bookings.unshift(entry);
   saveBookings(bookings);
+
+  btn.textContent = '提交預約申請'; btn.disabled = false;
   showFormMsg('✓ 預約申請已成功提交！我們將於24小時內聯絡您。','var(--gold)');
   ['f_name','f_phone','f_email','f_notes'].forEach(id=>document.getElementById(id).value='');
   ['f_treatment','f_time'].forEach(id=>document.getElementById(id).value='');
@@ -1148,16 +1171,4 @@ function showToast(msg){
 window.addEventListener('scroll',()=>{
   document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 60);
 });
-document.getElementById('adminOverlay').addEventListener('click',function(e){
-  if(e.target===this) closeAdmin();
-});
-document.addEventListener('keydown',function(e){
-  if(e.key==='Escape') closeAdmin();
-});
-
-/* INIT */
-renderTreatments();
-renderAds();
-</script>
-</body>
-</html>
+document.getElementById('adminOverlay').addEv
